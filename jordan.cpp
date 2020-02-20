@@ -96,13 +96,18 @@ void matr_to_NULL(double* m, int size) {
     }
 }
 
+double formula_matr_local(int i, int j){
+  //  return int(-5 + Random() * 10);
+    return fabs(i-j);
+}
+
 void formula_matr(double* a, int n,int m,int proc_num, int p, double *b, double &Norma, MPI_Comm G) {
     int k=n/m;
     double tempNorma = 0, buf = 0;
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
           //  buf = fabs(i - j);
-            buf = int(-5 + Random() * 10);
+            buf = formula_matr_local(i,j);
             tempNorma+=buf;
             int k1 = j /m ; // row
             int l = (k1 == k ? n%m :m);
@@ -508,6 +513,7 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
             if(!proc_num) printf("Memory allocation error\n");
             return -1;
     }
+
     if(name!=""){
         loc_err = init_matrix_file(a,n,m,name,proc_num,p,b,aNorma , numaColumn,G);
         MPI_Allreduce(&loc_err,&glob_err, 1, MPI_INT, MPI_SUM, G);
@@ -545,6 +551,7 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
     matr_to_E(C1,m,m);
     matr_to_E(C2,m,m);
     matr_to_E(C3,m,m);
+    fill(numaColumn, numaColumn + m*n, 0);
 //    cout<<aNorma<<" "<<endl;
     MPI_Barrier(G);
     double time_proc = MPI_Wtime();
@@ -740,7 +747,7 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
             }
         }
     }
-  //  printf("X poluchen\n");
+
     MPI_Allreduce(&loc_err,&glob_err, 1, MPI_INT, MPI_SUM, G);
     time_proc = MPI_Wtime() - time_proc;
 
@@ -752,8 +759,8 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
             delete[] columns;
             delete[] C1;
             delete[] numaColumn;
-            delete[]x;
-            delete[]a;
+            delete[] x;
+            delete[] a;
             delete[] b;
             return -1;
     }
@@ -769,7 +776,48 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
         printf("Answer: ");
         print_vector(x,n);
     }
-  //  printf("End of function\n");
+
+    //RESIDUAL BLOCK
+    if(proc_num==0){
+        double *c = new double[n];
+        fill(c,c + n, 0);
+        fill(b,b + n, 0);
+        double buf = 0;
+        if(name!=""){
+            ifstream file;
+            file.open(name.c_str());
+
+            for(int j=0 ; j<n; j++){ //y
+                for (int i = 0; i < n; i++) { //x
+                    file>>buf;
+                    c[j] += x[i] * buf;
+                    if(i % 2 == 0){
+                        b[j]+=buf;
+                    }
+                }
+                c[j]-=b[j];
+            }
+        }else
+        {
+            for(int j=0 ; j<n; j++){ //y
+                for (int i = 0; i < n; i++) { //x
+                    buf = formula_matr_local(i,j);
+                    c[j] += x[i] * buf;
+                    if(i % 2 == 0){
+                        b[j]+=buf;
+                    }
+                }
+                c[j]-=b[j];
+            }
+        }
+        double resid = norma_vec(c,n);
+        delete [] c;
+        cout<<"Residual: "<<resid<<endl;
+   }
+
+
+
+
 
     delete[] columns;
     delete[] C1;
@@ -783,272 +831,6 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
 
 
 
-/*void* Jordan_Solving_System(void *in_arg) {
-    Arg& arg=*((Arg *) in_arg);
-    //  static pthread_mutex_t mu=PTHREAD_MUTEX_INITIALIZER;
-    // pthread_mutex_lock(&mu);
-
-    int n_cpus = get_nprocs();
-
-    //   cpu_set_t& cpu = *arg.cpu;
-    cpu_set_t cpu;
-    CPU_ZERO(&cpu);
-    CPU_SET(n_cpus - arg.ind -1,&cpu);
-    pthread_setaffinity_np(pthread_self(),sizeof(cpu),&cpu);
-    pthread_setaffinity_np(pthread_self(),sizeof(cpu),&cpu);
-
-    //  pthread_mutex_unlock(&mu);
-    const int blockCount = arg.k;
-    const int blockSize = arg.m;
-    const int size = arg.n;
-    const int m = arg.m;
-    const int p = arg.p;
-    const int l = arg.n % arg.m;
-    const int k = arg.k;
-
-    double *a = arg.a , *b = arg.b, *x = arg.x;
-    double* C1 = new double[3 * blockSize * blockSize];
-    double* C2 = C1 + m*m;
-    double* C3 = C1 + 2*m*m;
-    double* numaColumn = new double[m * size];
-    //  int *columns = arg.columns;
-
-
-    int ErrorInv = 0, minNormaCol = -1;
-
-    int *columns = new int[k];
-
-    for(int i = 0;i<k;i++){
-        columns[i]=-1;
-    }
-
-
-    initMatrix(a,size,m,p,arg.ind);
-    reduce_max(p);
-
-    if(arg.ind==0){
-      //  new_print_matrix(a, size, m);
-        if (arg.argcc == 5) {
-            int err = init_matrix_file(a, size, m, arg.filename) ;
-            if (err < 0) {
-                *arg.error=-1;
-            }
-        }
-        if (arg.argcc == 4) {
-            formula_matr(a, size, m);
-        }
-        if(*arg.error!=-1){
-            new_print_matrix(a, size, m);
-
-        }
-    }
-    matr_to_E(C1,m,m);
-    matr_to_E(C2,m,m);
-    matr_to_E(C3,m,m);
-    reduce_max(p);
-    if( *arg.error==-1){
-        delete []C1;
-        delete []columns;
-        delete[] numaColumn;
-        return 0;
-    }
-
-    if(arg.ind==(k%p+1)%p){
-        RightSide(a, b, size, m);
-    }
-    reduce_max(p);
-    double aNorma = norma_matr(a, size, m);
-    if(arg.ind==0){
-        arg.fulltime=get_full_time();
-    }
-    arg.time_thr=get_time();
-
-    for (int row = 0; row < blockCount; row++) {
-
-        double minNorma = DBL_MAX;
-        minNormaCol = -1;
-        // ###############################################################
-        for (int col = arg.ind; col < blockCount; col+=p) {
-            if(columns[col]!=-1) continue;
-            get_block(proc_num, p, a, size, blockSize, col, row, C2, blockSize*blockSize);
-            ErrorInv = JordanInv(C2, blockSize, C1, aNorma);
-
-
-            if (ErrorInv == 0) {
-                double n = norma_matr(C2, blockSize,blockSize);
-
-                if (n < minNorma) {
-                    minNormaCol = col;
-                    minNorma = n;
-                }
-            }
-        }
-
-        //  cout<<arg.ind<<" potok "<<get_time() - arg.time_thr << " time on "<<row<<" step"<<endl;;
-        // ВСТАВЛЯЕМ КУСОК С ПОИСКОМ ГЛАВНОГО ЭЛЕМЕНТА И СИНХРОНИЗИРУЕМ ПРОЦЕССЫ
-        reduce_max(p,&minNormaCol,minNorma,columns,row);
-        //      printf("Potok %d i moi minNormaCol is %d\n", arg.ind,minNormaCol);
-
-        if (minNormaCol < 0) {
-            delete[] C1;
-            delete [] columns;
-            delete[] numaColumn;
-            arg.err = ERR_DEG_MATRIX;
-            return 0;
-        }
-
-        //ОБРАЩАЕМ ГЛАВНЫЙ  ЭЛЕМЕНТ
-        get_block(proc_num, p, a, size, blockSize, minNormaCol, row, C2, blockSize* blockSize);
-        ErrorInv = JordanInv(C2, blockSize, C1, aNorma);
-
-
-        //C2 - obratnaya (row,row)
-
-        //#############################################NORMIRUEM STROKU#############################
-
-        for (int col = arg.ind; col < blockCount; col+=p) {
-            if(columns[col]!=-1) continue;
-            get_block(proc_num, p, a, size, blockSize, col, row, C1 , blockSize* blockSize);   // C1 = A[mxm]{0, i}
-            mult_matrix(C2, C1, C3, blockSize, blockSize, blockSize);  // C3 = C2 * C1
-            push_block(proc_num, p, a, size, blockSize, col, row, C3, blockSize* blockSize);  // C3 = A[mxm]{0, i}
-        }
-        //cout<<size<<" "<<blockSize<<" "<<size % blockSize;
-        if(arg.ind == k % p){
-            if(l>0){
-                //   matr_to_NULL(C1,blockSize);
-                get_block(proc_num, p, a, size, blockSize, blockCount, row, C1,m*l);   // C1 = A[mxp]{0, k}
-                mult_matrix(C2, C1, C3, m, m, l);                           // C3[mxp] = C2 * C1
-                push_block(proc_num, p, a, size, blockSize, blockCount, row, C3, m*l);
-            }
-        }
-        if(arg.ind == ((k%p)+1)%p){
-
-            //  matr_to_NULL(C1,blockSize);
-            get_b_block(b, blockSize, row, C1, m);
-            mult_matrix(C2, C1, C3, m, m, 1);
-            push_b_block(b, blockSize, row, C3 , m);
-        }
-
-
-        get_block(proc_num, p, a,size,blockSize,minNormaCol,0,numaColumn,m * size);
-        //######################OBNULAYEM COLONKI##################################################
-        for (int i = 0; i < blockCount; i++) {
-            if (i == row) {
-                continue;
-            }
-            get_block(proc_num, p, numaColumn, size, blockSize, 0, i, C1, blockSize * blockSize);         // C1 = A[mxm]{i, 0}
-            for (int j = arg.ind ; j < blockCount; j+=p) {
-                if(columns[j]!=-1) continue;
-                get_block(proc_num, p, a, size, blockSize, j, row, C2, blockSize * blockSize);     // C2 = A[mxm]{0, j}
-                mult_matrix(C1, C2, C3, blockSize, blockSize, blockSize);  // C3 = C2 * C1         // TODO: СЃР»РµРІР° РёР»Рё СЃРїСЂР°РІР°?
-                get_block(proc_num, p, a, size, blockSize, j, i, C2,blockSize * blockSize );       // C2 = A[mxm]{i, j}
-                matr_sub_matr(C2, C3, C2, blockSize, blockSize);        // C2 = C2 - C3
-                push_block(proc_num, p, a, size, blockSize, j, i, C2 ,blockSize * blockSize );
-            }
-            if(arg.ind == k%p){
-                if(l>0){
-                    //matr_to_NULL(C2, blockSize);           // C1 = A[mxm]{i, 0}
-                    get_block(proc_num, p, a, size, blockSize,k, row, C2, m*l);
-                    mult_matrix(C1, C2, C3, m ,m ,l);
-
-                    get_block(proc_num, p, a, size, blockSize, k, i, C2, m*l);     // C1 = A[mxl]{i, k}
-                    matr_sub_matr(C2, C3, C2, m, m);                        // C2 = C1 - C3
-                    push_block(proc_num, p, a, size, blockSize, k, i, C2 ,m*l);
-                }
-            }
-            if(arg.ind == ((k%p)+1)%p){
-                // matr_to_NULL(C2, blockSize);
-                get_b_block(b, blockSize,row, C2 ,m);
-                mult_matrix(C1, C2, C3, m, m, 1);
-                get_b_block(b, blockSize, i, C2, m);
-                matr_sub_matr(C2, C3, C2, m, m);
-                push_b_block(b, blockSize, i, C2 , m);
-            }
-        }
-        if(l>0){
-            //  matr_to_NULL(C1, blockSize);
-            get_block(proc_num, p, numaColumn, size, blockSize, 0, k, C1, m*l); //
-            for (int i = arg.ind; i < blockCount; i+=p) {
-                if(columns[i]!=-1) continue;
-                get_block(proc_num, p, a, size, m, i, row, C2, m*m);
-                mult_matrix(C1, C2, C3,l,m,m);
-                get_block(proc_num, p, a, size, blockSize, i, k, C2, m*l);
-                matr_sub_matr(C2, C3, C2, m, m);
-                push_block(proc_num, p, a, size, blockSize, i, k, C2, m*l);
-            }
-            if(arg.ind == k % p){
-                // matr_to_NULL(C2, blockSize);
-                get_block(proc_num, p, a, size, blockSize, k, row, C2, m*l);
-                //      mult_matrix(C2, C1, C3, m);
-                mult_matrix(C1, C2, C3,l, m, l);                           // C1 = C2 * C3
-                get_block(proc_num, p, a, size, blockSize, k, k, C2, l*l);             // C2 = A[mxm]{k, k}
-                matr_sub_matr(C2, C3, C2, m, m);                                // C2 = C2 - C1
-                push_block(proc_num, p, a, size, blockSize, k, k, C2, l*l);
-                /////////////////////////////////////////////////////
-            }
-            if(arg.ind == ((k%p)+1)%p){
-                //    matr_to_NULL(C2, blockSize);
-                get_b_block(b, blockSize, row, C2,m);
-                mult_matrix(C1, C2, C3, l, m , 1 );
-                get_b_block(b, blockSize, k, C2 , l);
-                matr_sub_matr(C2, C3, C2, m, m);
-                push_b_block(b, blockSize, k, C2, l);
-                //////////////////////////////////////////////////
-            }
-        }
-        //СТАВИМ ТОЧКУ СИНХРОНИЗАЦИИ
-        //        LOG(__FILE__);
-        reduce_max(p);
-        //        LOG(__DATE__);
-    }
-    if(arg.ind == (k%p + 1)%p){
-        if(l>0){
-            //matr_to_E(C2, m);
-            //matr_to_E(C1, l);
-
-            get_block(proc_num, p, a, size, blockSize, k, k, C2, l*l);
-            ErrorInv = JordanInv(C2, l, C1, aNorma);
-
-            if (ErrorInv < 0) {
-                delete[] columns;
-                delete[] C1;
-                delete[] numaColumn;
-                arg.err = ERR_DEG_MATRIX;
-                return 0;
-            }
-            //  matr_to_NULL(C1, m);
-            get_b_block(b, blockSize, k, C1, l);
-            mult_matrix(C2,C1,C3, l, l, 1);
-            push_b_block(b, blockSize, k, C3, l);//C3 - b(k+1)
-            for (int i = 0; i < blockCount; i++) {
-                get_block(proc_num, p, a, size, blockSize, k, i, C1, l*m);
-                mult_matrix(C1, C3, C2, m , l ,1);
-                get_b_block(b, blockSize, i, C1 , m);
-                matr_sub_matr(C1, C2, C1, m, m);
-                push_b_block(b, m, i, C1, m);
-            }
-        }
-
-
-        for (int i = 0; i < blockCount; i++) {
-            for (int j = 0; j < blockSize; j++) {
-                x[i* blockSize + j] = b[columns[i] * blockSize + j];
-            }
-        }
-        if(l>0){
-            for (int i = 0; i < l; i++) {
-                x[blockSize * blockCount + i] = b[blockSize * blockCount + i];
-            }
-        }
-    }
-
-    delete [] C1;
-    delete[] columns;
-    delete[] numaColumn;
-    arg.time_thr = get_time() - arg.time_thr;
-
-    return 0;
-}*/
 
 double get_time(){
     struct rusage buf;

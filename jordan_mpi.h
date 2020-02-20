@@ -30,6 +30,7 @@ void print_matrix_rect(double* m, int w, int h);
 void matr_to_E(double* m, int size, int blockSize);
 void matr_to_NULL(double* m, int size);
 void formula_matr(double* a, int n,int m, int proc_num, int p, double *b, double &Norma,MPI_Comm G);
+double formula_matr_local(int i, int j);
 int JordanInv(double* a, int size, double* b, double norma=1);
 int read_matrix(double* a, int n, int m, const string& name, int proc_num, int p, double *b, double &Norma, double *CopyCol, MPI_Comm G);
 int init_matrix_file(double* a, int n, int m, const string& name, int proc_num, int p, double *b, double &Norma, double *CopyCol, MPI_Comm G);
