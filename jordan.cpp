@@ -99,20 +99,25 @@ void matr_to_NULL(double* m, int size) {
 double formula_matr_local(int i, int j){
   //  return int(-5 + Random() * 10);
     return fabs(i-j);
+   // return 1./(1 + i + j);
 }
 
 void formula_matr(double* a, int n,int m,int proc_num, int p, double *b, double &Norma, MPI_Comm G) {
     int k=n/m;
     double tempNorma = 0, buf = 0;
     for (int i = 0; i < n; i++) {
+        if(proc_num==0 || proc_num==k%p){
+            b[i]=0;
+        }
         for (int j = 0; j < n; j++) {
           //  buf = fabs(i - j);
+
             buf = formula_matr_local(i,j);
             tempNorma+=buf;
             int k1 = j /m ; // row
             int l = (k1 == k ? n%m :m);
             if(proc_num ==0 && i < 10 && j < 10){
-                cout<<buf<< "\t";
+                cout<<round(buf*1000)/1000<< "\t";
             }
             //a[k1*n*m + i*l + j%m] = fabs(i-j);
             // p[k] = abs(i - k);
@@ -275,7 +280,7 @@ int read_matrix(double* a, int n,int m,  const string& name, int proc_num, int p
                         loc_err = -1;
                     }else{
                         if(i < 10 && l*m + j < 10){
-                            cout<<buf<<"\t";
+                            cout<<round(buf*1000)/1000<<"\t";
                         }
 
                         if(i % 2 == 0){
@@ -531,8 +536,11 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
         // printf("%d: %lf %lf %lf\n", proc_num , a[0] ,a[1] ,a[2]);
     }else{
         formula_matr(a,n,m,proc_num,p,b, aNorma,G);
-    }
 
+    }
+    if(proc_num==0){
+        LN;LN;
+    }
 
 //    printf("Proc_num: %d\n",proc_num);
 //    print_vector(a,len);
@@ -553,6 +561,11 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
     matr_to_E(C3,m,m);
     fill(numaColumn, numaColumn + m*n, 0);
 //    cout<<aNorma<<" "<<endl;
+
+//    if(proc_num==k%p){
+//        LOG("DO CIKLA");
+//        print_vector(b,n);
+//    }
     MPI_Barrier(G);
     double time_proc = MPI_Wtime();
     for (int row = 0; row < blockCount; row++) {
@@ -601,16 +614,24 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
         }
 
         MPI_Bcast(numaColumn, n*m, MPI_DOUBLE, di_out.minNormaCol % p, G);
-    //    print_vector(numaColumn, m*size);
+//        if(proc_num==k%p){
+//            LOG("numaVector");
+//            print_vector(numaColumn, m*size);
+//        }
         //ОБРАЩАЕМ ГЛАВНЫЙ  ЭЛЕМЕНТ
         get_block(proc_num, p, numaColumn, size, blockSize, 0, row, C2, blockSize* blockSize,true);
         ErrorInv = JordanInv(C2, blockSize, C1, aNorma);
 
  //       printf("l = %d\n",l);
         //C2 - obratnaya (row,row)
-
+//        if(proc_num==k%p){
+//            LOG("C2");
+//            print_matrix(C2,m);
+//        }
         //#############################################NORMIRUEM STROKU#############################
 
+
+//    LOG(proc_num);
         for (int col = proc_num; col < blockCount; col+=p) {
             if(columns[col]!=-1) continue;
             get_block(proc_num, p, a, size, blockSize, (col - proc_num)/p, row, C1 , blockSize* blockSize);   // C1 = A[mxm]{0, i}
@@ -627,8 +648,11 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
             }
             //  matr_to_NULL(C1,blockSize);
             get_b_block(b, blockSize, row, C1, m);
+//            LOG("DO MULTA");
+//            print_vector(b,n);
             mult_matrix(C2, C1, C3, m, m, 1);
             push_b_block(b, blockSize, row, C3 , m);
+//            print_vector(b,n);
         }
 
    //         printf("Mult row %d\n",row);
@@ -666,6 +690,7 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
                 get_b_block(b, blockSize, i, C2, m);
                 matr_sub_matr(C2, C3, C2, m, m);
                 push_b_block(b, blockSize, i, C2 , m);
+         //       print_vector(b,n);
             }
         }
         if(l>0){
@@ -707,6 +732,7 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
         //        LOG(__DATE__);
        // MPI_Barrier(G);
   //      printf("End of step %d\n",row);
+
     }
     if(proc_num == k%p){
         if(l>0){
@@ -752,6 +778,7 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
     time_proc = MPI_Wtime() - time_proc;
 
     if(proc_num == 0){
+
         printf("Time : %lf\n",time_proc);
     }
     if(glob_err){
@@ -812,7 +839,7 @@ int JordanSolvingSystem(int n, int m, string name, int p , int proc_num , MPI_Co
         }
         double resid = norma_vec(c,n);
         delete [] c;
-        cout<<"Residual: "<<resid<<endl;
+        cout<<"n "<<n<<" m "<<m<<" p "<<p<<" Residual: "<<resid<<endl;
    }
 
 

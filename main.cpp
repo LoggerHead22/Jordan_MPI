@@ -24,7 +24,5 @@ int main(int argc, char * argv[]){
   //  LOG("Fin");
 
     MPI_Finalize();
-   // LOG("after fin");
-
     return 0;
 }
